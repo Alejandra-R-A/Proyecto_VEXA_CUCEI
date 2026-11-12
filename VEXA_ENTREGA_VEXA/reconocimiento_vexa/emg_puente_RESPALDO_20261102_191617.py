@@ -1,0 +1,77 @@
+"""Puente entre adquisici?n EMG y validaci?n de gestos VEXA."""
+
+import time
+
+from .emg_validador import validar_gesto_emg
+
+
+class PuenteEMG:
+    def __init__(
+        self,
+        lector,
+        umbrales,
+        ventana_segundos=2.5,
+        tolerancia_segundos=0.25,
+    ):
+        self.lector = lector
+        self.umbrales = tuple(umbrales)
+        self.ventana_segundos = float(ventana_segundos)
+        self.tolerancia_segundos = float(tolerancia_segundos)
+
+    def validar(self, gesto, instante_evento=None):
+        """Devuelve (autorizado, motivo).
+
+        El instante del evento debe expresarse en time.monotonic().
+        La ventana inicial es provisional y se ajustar? al
+        comportamiento real del motor facial.
+        """
+        if instante_evento is None:
+            instante_evento = time.monotonic()
+
+        muestras = self.lector.obtener_muestras()
+
+        if not muestras:
+            return False, "SIN_MUESTRAS"
+
+        estado = self.lector.estado()
+
+        if estado.get("error"):
+            return False, "ERROR_LECTOR"
+
+        ultimo_dato = estado.get("ultimo_dato")
+
+        if ultimo_dato is None:
+            return False, "SIN_DATOS_RECIENTES"
+
+        if instante_evento - ultimo_dato > self.tolerancia_segundos:
+            return False, "DATOS_EMG_ANTIGUOS"
+
+        if ultimo_dato - instante_evento > self.tolerancia_segundos:
+            return False, "RELOJES_NO_SINCRONIZADOS"
+
+        inicio = instante_evento - self.ventana_segundos
+
+        ventana = [
+            m for m in muestras
+            if inicio <= m[0] <= instante_evento
+        ]
+
+        if len(ventana) < 60:
+            return False, "VENTANA_INSUFICIENTE"
+
+        # Exigir al menos un canal con datos v?lidos recientes.
+        recientes = [
+            m for m in ventana
+            if m[0] >= instante_evento - self.tolerancia_segundos
+        ]
+
+        if not any(m[3] or m[4] for m in recientes):
+            return False, "SIN_CANAL_EMG_VALIDO_RECIENTE"
+
+        return validar_gesto_emg(
+            gesto,
+            ventana,
+            self.umbrales,
+            inicio,
+            instante_evento,
+        )

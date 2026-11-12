@@ -1,0 +1,5 @@
+# Python 3.10 (entorno mpenv), Windows 10/11. Usar Python del entorno virtual.
+mediapipe==0.10.21
+numpy>=1.26.0,<2.0
+opencv-contrib-python==4.11.0.86
+PySide6>=6.6,<6.9
